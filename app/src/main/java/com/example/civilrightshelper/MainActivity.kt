@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
@@ -45,7 +46,6 @@ fun ChatScreen(
     initialMessages: List<Pair<String, String>> = emptyList(),
     onNavigateToInfo: () -> Unit = {}
 ) {
-    // Use Column with TopAppBar and content
     Column(modifier = modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text("Civil Rights Helper") },
@@ -147,7 +147,7 @@ fun InfoScreen(
             title = { Text("App Info") },
             navigationIcon = {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                 }
             }
         )
