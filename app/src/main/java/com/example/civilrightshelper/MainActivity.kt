@@ -19,6 +19,13 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.civilrightshelper.ui.theme.CivilRightsHelperTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.io.OutputStreamWriter
+import java.net.HttpURLConnection
+import java.net.URL
 
 class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
@@ -58,6 +65,7 @@ fun ChatScreen(
 
         var query by remember { mutableStateOf(TextFieldValue("")) }
         val messages = remember { mutableStateListOf<Pair<String, String>>() }
+        val coroutineScope = rememberCoroutineScope()
 
         // Populate preview/test messages only once
         LaunchedEffect(Unit) {
@@ -124,12 +132,17 @@ fun ChatScreen(
                         if (userMsg.isNotEmpty()) {
                             messages.add("user" to userMsg)
                             query = TextFieldValue("")
-                            messages.add("ai" to "This is a placeholder response to: \"$userMsg\"")
+
+                            coroutineScope.launch {
+                                val aiResponse = fetchLLMResponse(userMsg)
+                                messages.add("ai" to aiResponse)
+                            }
                         }
                     }
                 ) {
                     Text("Send")
                 }
+
             }
         }
     }
@@ -221,7 +234,6 @@ fun ChatScreenPreview() {
         "user" to "What do I say if I'm being detained?",
         "ai" to "You can ask: 'Am I being detained, or am I free to go?'"
     )
-
     CivilRightsHelperTheme {
         ChatScreen(initialMessages = sampleMessages)
     }
@@ -232,6 +244,37 @@ fun ChatScreenPreview() {
 fun InfoScreenPreview() {
     CivilRightsHelperTheme {
         InfoScreen()
+    }
+}
+
+
+suspend fun fetchLLMResponse(userMessage: String): String {
+    return withContext(Dispatchers.IO) {
+        try {
+            val url = URL("https://10.0.2.2:3000/ask") // emulator = 10.0.2.2
+
+            val jsonBody = JSONObject()
+            jsonBody.put("query", userMessage)
+
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "POST"
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.doOutput = true
+
+            OutputStreamWriter(connection.outputStream).use { writer ->
+                writer.write(jsonBody.toString())
+            }
+
+            val response = connection.inputStream.bufferedReader().readText()
+            connection.disconnect()
+
+            val responseJson = JSONObject(response)
+            responseJson.optString("answer", "No answer from server.")
+
+        } catch (e: Exception) {
+            e.printStackTrace()
+            "Error: ${e.localizedMessage}"
+        }
     }
 }
 
