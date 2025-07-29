@@ -9,40 +9,45 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.civilrightshelper.ui.theme.CivilRightsHelperTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import java.io.OutputStreamWriter
-import java.net.HttpURLConnection
-import java.net.URL
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.OkHttpClient
+import okhttp3.Request
 
 class MainActivity : ComponentActivity() {
-    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             CivilRightsHelperTheme {
                 var currentScreen by remember { mutableStateOf("chat") }
+                var selectedLanguage by remember { mutableStateOf("English") }
 
                 when (currentScreen) {
-                    "chat" -> ChatScreen(onNavigateToInfo = { currentScreen = "info" })
-                    "info" -> InfoScreen(onBack = { currentScreen = "chat" })
+                    "chat" -> ChatScreen(
+                        selectedLanguage = selectedLanguage,
+                        onNavigateToInfo = { currentScreen = "info" }
+                    )
+                    "info" -> InfoScreen(
+                        selectedLanguage = selectedLanguage,
+                        onLanguageChange = { selectedLanguage = it },
+                        onBack = { currentScreen = "chat" }
+                    )
                 }
             }
         }
-
     }
 }
 
@@ -51,6 +56,7 @@ class MainActivity : ComponentActivity() {
 fun ChatScreen(
     modifier: Modifier = Modifier,
     initialMessages: List<Pair<String, String>> = emptyList(),
+    selectedLanguage: String,
     onNavigateToInfo: () -> Unit = {}
 ) {
     Column(modifier = modifier.fillMaxSize()) {
@@ -67,7 +73,6 @@ fun ChatScreen(
         val messages = remember { mutableStateListOf<Pair<String, String>>() }
         val coroutineScope = rememberCoroutineScope()
 
-        // Populate preview/test messages only once
         LaunchedEffect(Unit) {
             if (messages.isEmpty()) messages.addAll(initialMessages)
         }
@@ -79,7 +84,6 @@ fun ChatScreen(
                 .padding(top = 60.dp)
                 .padding(bottom = 30.dp)
         ) {
-            // Chat history UI
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -112,10 +116,8 @@ fun ChatScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Input and Send Button
             Row(
-                modifier = Modifier
-                    .fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 OutlinedTextField(
@@ -133,16 +135,22 @@ fun ChatScreen(
                             messages.add("user" to userMsg)
                             query = TextFieldValue("")
 
+                            val aiMsg = StringBuilder()
+                            messages.add("ai" to "")
+
                             coroutineScope.launch {
-                                val aiResponse = fetchLLMResponse(userMsg)
-                                messages.add("ai" to aiResponse)
+                                fetchLLMStream(userMsg, selectedLanguage) { chunk ->
+                                    aiMsg.append(chunk)
+                                    if (messages.isNotEmpty() && messages.last().first == "ai") {
+                                        messages[messages.lastIndex] = "ai" to aiMsg.toString()
+                                    }
+                                }
                             }
                         }
                     }
                 ) {
                     Text("Send")
                 }
-
             }
         }
     }
@@ -151,10 +159,10 @@ fun ChatScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InfoScreen(
+    selectedLanguage: String,
+    onLanguageChange: (String) -> Unit,
     onBack: () -> Unit = {}
 ) {
-    var selectedLanguage by remember { mutableStateOf("English") }
-
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text("App Info") },
@@ -165,10 +173,7 @@ fun InfoScreen(
             }
         )
 
-        Column(modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp)) {
-
+        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             Text(
                 text = "This is a personal-use app. Legal info is not verified.",
                 style = MaterialTheme.typography.bodyLarge
@@ -176,30 +181,17 @@ fun InfoScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            Text(
-                text = "Select App Language:",
-                style = MaterialTheme.typography.titleMedium
-            )
+            Text(text = "Select App Language:", style = MaterialTheme.typography.titleMedium)
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            LanguageOption(
-                label = "English",
-                selected = selectedLanguage == "English",
-                onClick = { selectedLanguage = "English" }
-            )
-
-            LanguageOption(
-                label = "Spanish",
-                selected = selectedLanguage == "Spanish",
-                onClick = { selectedLanguage = "Spanish" }
-            )
-
-            LanguageOption(
-                label = "Russian",
-                selected = selectedLanguage == "Russian",
-                onClick = { selectedLanguage = "Russian" }
-            )
+            listOf("English", "Spanish").forEach { lang ->
+                LanguageOption(
+                    label = lang,
+                    selected = selectedLanguage == lang,
+                    onClick = { onLanguageChange(lang) }
+                )
+            }
         }
     }
 }
@@ -208,75 +200,59 @@ fun InfoScreen(
 fun LanguageOption(label: String, selected: Boolean, onClick: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp)
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
     ) {
-        RadioButton(
-            selected = selected,
-            onClick = onClick
-        )
-        Text(
-            text = label,
-            modifier = Modifier.padding(start = 8.dp)
-        )
+        RadioButton(selected = selected, onClick = onClick)
+        Text(text = label, modifier = Modifier.padding(start = 8.dp))
     }
 }
 
-
-
-@Preview(showBackground = true, showSystemUi = true)
-@Composable
-fun ChatScreenPreview() {
-    val sampleMessages = listOf(
-        "user" to "Can I record the police?",
-        "ai" to "Yes, in Oregon you can record as long as you don't interfere.",
-        "user" to "What do I say if I'm being detained?",
-        "ai" to "You can ask: 'Am I being detained, or am I free to go?'"
-    )
-    CivilRightsHelperTheme {
-        ChatScreen(initialMessages = sampleMessages)
-    }
-}
-
-@Preview(showBackground = true, showSystemUi = true)
-@Composable
-fun InfoScreenPreview() {
-    CivilRightsHelperTheme {
-        InfoScreen()
-    }
-}
-
-
-suspend fun fetchLLMResponse(userMessage: String): String {
-    return withContext(Dispatchers.IO) {
+suspend fun fetchLLMStream(userMessage: String, language: String, onChunk: (String) -> Unit) {
+    withContext(Dispatchers.IO) {
         try {
-            val url = URL("https://10.0.2.2:3000/ask") // emulator = 10.0.2.2
-
-            val jsonBody = JSONObject()
-            jsonBody.put("query", userMessage)
-
-            val connection = url.openConnection() as HttpURLConnection
-            connection.requestMethod = "POST"
-            connection.setRequestProperty("Content-Type", "application/json")
-            connection.doOutput = true
-
-            OutputStreamWriter(connection.outputStream).use { writer ->
-                writer.write(jsonBody.toString())
+            val json = JSONObject().apply {
+                put("query", userMessage)
+                put("language", language)
             }
 
-            val response = connection.inputStream.bufferedReader().readText()
-            connection.disconnect()
+            val body = json.toString().toRequestBody("application/json".toMediaType())
 
-            val responseJson = JSONObject(response)
-            responseJson.optString("answer", "No answer from server.")
+            val request = Request.Builder()
+                .url("http://10.0.2.2:3000/ask")
+                .post(body)
+                .build()
+
+            val client = OkHttpClient.Builder()
+                .connectTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(0, java.util.concurrent.TimeUnit.SECONDS) // Infinite stream
+                .writeTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    onChunk("Error: HTTP ${response.code}")
+                    return@use
+                }
+
+                val reader = response.body?.charStream()
+                val buffer = CharArray(256)
+                var read: Int
+
+                if (reader != null) {
+                    while (reader.read(buffer).also { read = it } != -1) {
+                        val chunk = String(buffer, 0, read)
+                        if (chunk.contains("[[END_OF_STREAM]]")) break
+                        if (chunk.isNotBlank()) {
+                            onChunk(chunk)
+                        }
+                    }
+                } else {
+                    onChunk("Error: No response body.")
+                }
+            }
 
         } catch (e: Exception) {
-            e.printStackTrace()
-            "Error: ${e.localizedMessage}"
+            onChunk("Error: ${e.localizedMessage}")
         }
     }
 }
-
-
-
