@@ -1,4 +1,4 @@
-name: Android CI
+name: Android tests
 
 on:
   push:
@@ -6,37 +6,37 @@ on:
   pull_request:
 
 jobs:
-  unit-tests:
+  tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
-      - uses: gradle/actions/setup-gradle@v3
+          java-version: "17"
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
       - name: Run unit tests
-        run: ./gradlew test
+        run: ./gradlew testDebugUnitTest --stacktrace
 
-  ui-tests:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-      - uses: gradle/actions/setup-gradle@v3
+      - name: Build app & androidTest APKs
+        run: ./gradlew :app:assembleDebug :app:assembleAndroidTest --stacktrace
 
-      # Boot emulator with software rendering (no hardware accel) on Linux
-      - name: Run instrumented tests on emulator
-        uses: reactivecircus/android-emulator-runner@v2
+      - name: Run instrumentation tests (emulator.wtf)
+        uses: emulator-wtf/run-tests@v0
         with:
-          api-level: 33
-          target: google_apis
-          arch: x86_64
-          profile: pixel_5
-          emulator-options: -no-window -gpu swiftshader_indirect -no-accel -no-snapshot -noaudio -no-boot-anim
-          disable-animations: true
-          script: ./gradlew connectedAndroidTest
+          api-token: ${{ secrets.EW_API_TOKEN }} 
+          app: app/build/outputs/apk/debug/app-debug.apk
+          test: app/build/outputs/apk/androidTest/app-debug-androidTest.apk
+          outputs-dir: build/ewtf-results
+
+      - name: Upload test outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-outputs
+          path: build/ewtf-results
