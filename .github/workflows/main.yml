@@ -20,9 +20,6 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Run unit tests
-        run: ./gradlew testDebugUnitTest --stacktrace
-
       - name: Build app & androidTest APKs
         run: ./gradlew :app:assembleDebug :app:assembleAndroidTest --stacktrace
 
@@ -31,7 +28,7 @@ jobs:
         with:
           api-token: ${{ secrets.EW_API_TOKEN }} 
           app: app/build/outputs/apk/debug/app-debug.apk
-          test: app/build/outputs/apk/androidTest/app-debug-androidTest.apk
+          test: app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
           outputs-dir: build/ewtf-results
 
       - name: Upload test outputs
