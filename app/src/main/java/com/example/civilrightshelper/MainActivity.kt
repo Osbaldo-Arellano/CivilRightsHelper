@@ -207,7 +207,16 @@ fun LanguageOption(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
-suspend fun fetchLLMStream(userMessage: String, language: String, onChunk: (String) -> Unit) {
+suspend fun fetchLLMStream(
+    userMessage: String,
+    language: String,
+    client: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(0, java.util.concurrent.TimeUnit.SECONDS)
+        .writeTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+        .build(),
+    onChunk: (String) -> Unit
+){
     withContext(Dispatchers.IO) {
         try {
             val json = JSONObject().apply {
@@ -216,16 +225,9 @@ suspend fun fetchLLMStream(userMessage: String, language: String, onChunk: (Stri
             }
 
             val body = json.toString().toRequestBody("application/json".toMediaType())
-
             val request = Request.Builder()
                 .url("http://10.0.2.2:3000/ask")
                 .post(body)
-                .build()
-
-            val client = OkHttpClient.Builder()
-                .connectTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
-                .readTimeout(0, java.util.concurrent.TimeUnit.SECONDS) // Infinite stream
-                .writeTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
                 .build()
 
             client.newCall(request).execute().use { response ->
@@ -237,11 +239,10 @@ suspend fun fetchLLMStream(userMessage: String, language: String, onChunk: (Stri
                 val reader = response.body?.charStream()
                 val buffer = CharArray(256)
                 var read: Int
-
                 if (reader != null) {
                     while (reader.read(buffer).also { read = it } != -1) {
                         val chunk = String(buffer, 0, read)
-                        if (chunk.contains("[[END_OF_STREAM]]")) break
+                        if ("[[END_OF_STREAM]]" in chunk) break
                         if (chunk.isNotBlank()) {
                             onChunk(chunk)
                         }
@@ -250,9 +251,9 @@ suspend fun fetchLLMStream(userMessage: String, language: String, onChunk: (Stri
                     onChunk("Error: No response body.")
                 }
             }
-
         } catch (e: Exception) {
             onChunk("Error: ${e.localizedMessage}")
         }
     }
 }
+
